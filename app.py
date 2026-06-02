@@ -164,10 +164,19 @@ Quantity - {quantity}
 Date of requirement - {date_req}
 Location - {location}"""
 
-                send_text(phone, summary)
+              send_text(phone, summary)
 
-                user_state.pop(phone, None)
-                user_data.pop(phone, None)
+save_to_google_sheet(
+    phone,
+    occasion,
+    budget,
+    quantity,
+    date_req,
+    location
+)
+
+user_state.pop(phone, None)
+user_data.pop(phone, None)
 
             else:
                 send_occasion_menu(phone)
@@ -183,15 +192,21 @@ if __name__ == "__main__":
 
 def save_to_google_sheet(phone, occasion, budget, quantity, date_req, location):
 
-    webhook = os.getenv("GOOGLE_SHEET_WEBHOOK")
+webhook = os.getenv("GOOGLE_SHEET_WEBHOOK")
 
-    payload = {
-        "phone": phone,
-        "occasion": occasion,
-        "budget": budget,
-        "quantity": quantity,
-        "date_required": date_req,
-        "location": location
-    }
+payload = {
+    "phone": phone,
+    "occasion": occasion,
+    "budget": budget,
+    "quantity": quantity,
+    "date_required": date_req,
+    "location": location
+}
 
-    requests.post(webhook, json=payload)
+print("SENDING TO GOOGLE SHEET")
+print(payload)
+
+response = requests.post(webhook, json=payload)
+
+print("STATUS:", response.status_code)
+print("RESPONSE:", response.text)
