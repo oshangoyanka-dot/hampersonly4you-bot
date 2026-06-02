@@ -188,7 +188,7 @@ def webhook():
                         """🌸 Please share below information
 
 Quantity -
-Date of requirement -
+Date of delivery -
 Location -
 """
                     )
@@ -214,7 +214,13 @@ Location -
                     occasion = user_data[phone]["occasion"]
                     budget = user_data[phone]["budget"]
 
-                    summary = f"""✅ Thank you.
+                    details = text.split("\n")
+
+quantity = details[0].strip() if len(details) > 0 else ""
+date_required = details[1].strip() if len(details) > 1 else ""
+location = details[2].strip() if len(details) > 2 else ""
+
+summary = f"""✅ Thank you.
 
 Our team will contact you shortly.
 
@@ -223,8 +229,9 @@ Lead Summary
 Phone Number - {phone}
 Occasion - {occasion}
 Budget per hamper - {budget}
-
-{text}
+Quantity - {quantity}
+Date of delivery - {date_required}
+Location - {location}
 """
 
                     send_text(phone, summary)
