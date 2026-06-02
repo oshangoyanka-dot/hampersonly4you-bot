@@ -33,6 +33,7 @@ def send_occasion_menu(phone):
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
     }
+
     payload = {
         "messaging_product": "whatsapp",
         "to": phone,
@@ -56,6 +57,7 @@ def send_occasion_menu(phone):
             }
         }
     }
+
     requests.post(url, headers=headers, json=payload)
 
 
@@ -65,6 +67,7 @@ def send_budget_menu(phone):
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
     }
+
     payload = {
         "messaging_product": "whatsapp",
         "to": phone,
@@ -86,6 +89,7 @@ def send_budget_menu(phone):
             }
         }
     }
+
     requests.post(url, headers=headers, json=payload)
 
 
@@ -126,8 +130,9 @@ def webhook():
 
                 send_text(
                     phone,
-                    "🌸 Please share below information\n\nQuantity -\nDate of delivery -\nLocation -"
+                    "🌸 Please share below information\n\nQuantity -\nDate of requirement -\nLocation -"
                 )
+
             else:
                 user_data[phone] = {"occasion": selection}
                 user_state[phone] = "waiting_budget"
@@ -137,7 +142,7 @@ def webhook():
             text = message["text"]["body"].strip()
 
             if user_state.get(phone) == "waiting_details":
-                lines = [x.strip() for x in text.split("\\n") if x.strip()]
+                lines = [x.strip() for x in text.splitlines() if x.strip()]
 
                 quantity = lines[0] if len(lines) > 0 else "Not Provided"
                 date_req = lines[1] if len(lines) > 1 else "Not Provided"
@@ -156,7 +161,7 @@ Phone Number - {phone}
 Occasion - {occasion}
 Budget per hamper - {budget}
 Quantity - {quantity}
-Date of delivery - {date_req}
+Date of requirement - {date_req}
 Location - {location}"""
 
                 send_text(phone, summary)
