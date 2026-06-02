@@ -9,11 +9,11 @@ WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 
 PHONE_NUMBER_ID = "1135928302934605"
 
-# Temporary storage
 users = {}
 
 
-def send_message(to, text):
+def send_text(to, text):
+
     url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
@@ -25,8 +25,83 @@ def send_message(to, text):
         "messaging_product": "whatsapp",
         "to": to,
         "type": "text",
-        "text": {
-            "body": text
+        "text": {"body": text}
+    }
+
+    requests.post(url, headers=headers, json=payload)
+
+
+def send_occasion_menu(to):
+
+    url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {
+                "text": "👋 Welcome to HampersOnly4You\n\nChoose an Occasion"
+            },
+            "action": {
+                "button": "View Options",
+                "sections": [
+                    {
+                        "title": "Occasions",
+                        "rows": [
+                            {"id": "birthday", "title": "🎂 Birthday"},
+                            {"id": "anniversary", "title": "❤️ Anniversary"},
+                            {"id": "wedding", "title": "💍 Wedding"},
+                            {"id": "corporate", "title": "🏢 Corporate Gifts"},
+                            {"id": "custom", "title": "🎁 Custom Hamper"}
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+
+    requests.post(url, headers=headers, json=payload)
+
+
+def send_budget_menu(to):
+
+    url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {
+                "text": "Please select your budget"
+            },
+            "action": {
+                "button": "Select Budget",
+                "sections": [
+                    {
+                        "title": "Budget",
+                        "rows": [
+                            {"id": "b1", "title": "Under ₹1000"},
+                            {"id": "b2", "title": "₹1000 - ₹3000"},
+                            {"id": "b3", "title": "₹3000 - ₹5000"},
+                            {"id": "b4", "title": "₹5000+"}
+                        ]
+                    }
+                ]
+            }
         }
     }
 
@@ -57,124 +132,107 @@ def webhook():
         data = request.get_json(force=True)
 
         try:
-            message = data["entry"][0]["changes"][0]["value"]["messages"][0]
+
+            value = data["entry"][0]["changes"][0]["value"]
+
+            if "messages" not in value:
+                return "OK", 200
+
+            message = value["messages"][0]
             sender = message["from"]
-            text = message["text"]["body"].strip()
 
             if sender not in users:
 
-                users[sender] = {
-                    "step": "occasion"
-                }
+                users[sender] = {"step": "occasion"}
 
-                send_message(
-                    sender,
-                    "👋 Welcome to HampersOnly4You\n\n"
-                    "Please choose an occasion:\n\n"
-                    "1️⃣ Birthday\n"
-                    "2️⃣ Anniversary\n"
-                    "3️⃣ Wedding\n"
-                    "4️⃣ Corporate Gifts\n"
-                    "5️⃣ Custom Hamper"
-                )
+                send_occasion_menu(sender)
 
-                return "EVENT_RECEIVED", 200
+                return "OK", 200
 
             user = users[sender]
 
-            # Occasion
-            if user["step"] == "occasion":
+            if message["type"] == "interactive":
 
-                occasions = {
-                    "1": "Birthday",
-                    "2": "Anniversary",
-                    "3": "Wedding",
-                    "4": "Corporate Gifts",
-                    "5": "Custom Hamper"
-                }
+                selection = message["interactive"]["list_reply"]["id"]
 
-                user["occasion"] = occasions.get(text, text)
-                user["step"] = "budget"
+                if user["step"] == "occasion":
 
-                send_message(
-                    sender,
-                    f"🎁 Occasion Selected: {user['occasion']}\n\n"
-                    "Please choose your budget:\n\n"
-                    "1️⃣ Under ₹1000\n"
-                    "2️⃣ ₹1000 - ₹3000\n"
-                    "3️⃣ ₹3000 - ₹5000\n"
-                    "4️⃣ ₹5000+"
-                )
+                    user["occasion"] = selection
+                    user["step"] = "budget"
 
-            elif user["step"] == "budget":
+                    send_budget_menu(sender)
 
-                budgets = {
-                    "1": "Under ₹1000",
-                    "2": "₹1000 - ₹3000",
-                    "3": "₹3000 - ₹5000",
-                    "4": "₹5000+"
-                }
+                    return "OK", 200
 
-                user["budget"] = budgets.get(text, text)
-                user["step"] = "name"
+                elif user["step"] == "budget":
 
-                send_message(sender, "Please enter your name.")
+                    user["budget"] = selection
+                    user["step"] = "name"
 
-            elif user["step"] == "name":
+                    send_text(sender, "Please enter your name.")
 
-                user["name"] = text
-                user["step"] = "address"
+                    return "OK", 200
 
-                send_message(sender, "Please enter your address.")
+            if message["type"] == "text":
 
-            elif user["step"] == "address":
+                text = message["text"]["body"]
 
-                user["address"] = text
-                user["step"] = "quantity"
+                if user["step"] == "name":
 
-                send_message(sender, "Please enter quantity required.")
+                    user["name"] = text
+                    user["step"] = "address"
 
-            elif user["step"] == "quantity":
+                    send_text(sender, "Please enter your address.")
 
-                user["quantity"] = text
-                user["step"] = "date"
+                elif user["step"] == "address":
 
-                send_message(
-                    sender,
-                    "Please enter date of requirement.\nExample: 15 June 2026"
-                )
+                    user["address"] = text
+                    user["step"] = "quantity"
 
-            elif user["step"] == "date":
+                    send_text(sender, "Please enter quantity required.")
 
-                user["date"] = text
-                user["step"] = "location"
+                elif user["step"] == "quantity":
 
-                send_message(sender, "Please enter delivery location/city.")
+                    user["quantity"] = text
+                    user["step"] = "date"
 
-            elif user["step"] == "location":
+                    send_text(sender, "Please enter date of requirement.")
 
-                user["location"] = text
+                elif user["step"] == "date":
 
-                summary = (
-                    "✅ Thank you for your enquiry.\n\n"
-                    "Our team will contact you shortly.\n\n"
-                    "Lead Summary\n\n"
-                    f"Occasion: {user['occasion']}\n"
-                    f"Budget: {user['budget']}\n"
-                    f"Name: {user['name']}\n"
-                    f"Address: {user['address']}\n"
-                    f"Quantity: {user['quantity']}\n"
-                    f"Date of Requirement: {user['date']}\n"
-                    f"Location: {user['location']}"
-                )
+                    user["date"] = text
+                    user["step"] = "location"
 
-                send_message(sender, summary)
+                    send_text(sender, "Please enter delivery location.")
 
-                print("NEW LEAD:", user, flush=True)
+                elif user["step"] == "location":
 
-                del users[sender]
+                    user["location"] = text
+
+                    summary = f"""
+✅ Thank you.
+
+Our team will contact you shortly.
+
+Lead Summary
+
+Occasion: {user['occasion']}
+Budget: {user['budget']}
+Name: {user['name']}
+Address: {user['address']}
+Quantity: {user['quantity']}
+Date of Requirement: {user['date']}
+Location: {user['location']}
+"""
+
+                    send_text(sender, summary)
+
+                    print("NEW LEAD:", user)
+
+                    del users[sender]
 
         except Exception as e:
+
             print("ERROR:", e, flush=True)
 
         return "EVENT_RECEIVED", 200
