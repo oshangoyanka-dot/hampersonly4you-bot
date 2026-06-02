@@ -22,10 +22,14 @@ def webhook():
 
         return "Verification failed", 403
 
-    if request.method == "POST":
-        data = request.get_json()
-        print("Webhook received:", data)
-        return "EVENT_RECEIVED", 200
+  if request.method == "POST":
+    data = request.get_json(force=True)
+
+    print("================================", flush=True)
+    print(data, flush=True)
+    print("================================", flush=True)
+
+    return "EVENT_RECEIVED", 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
