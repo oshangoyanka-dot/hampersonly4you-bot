@@ -1,12 +1,11 @@
 from flask import Flask, request
-import requests
 import os
+import requests
 
-app = Flask(__name__)
+app = Flask(name)
 
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-
 PHONE_NUMBER_ID = "1135928302934605"
 
 user_state = {}
@@ -125,106 +124,88 @@ if request.method == "GET":
 
     return "Verification failed", 403
 
-if request.method == "POST":
+data = request.get_json(force=True)
 
-    data = request.get_json(force=True)
+try:
+    value = data["entry"][0]["changes"][0]["value"]
 
-    try:
+    if "messages" not in value:
+        return "EVENT_RECEIVED", 200
 
-        value = data["entry"][0]["changes"][0]["value"]
+    message = value["messages"][0]
+    phone = message["from"]
 
-        if "messages" not in value:
-            return "EVENT_RECEIVED", 200
+    if message["type"] == "interactive":
 
-        message = value["messages"][0]
-        phone = message["from"]
+        selection = message["interactive"]["list_reply"]["title"]
 
-        if message["type"] == "interactive":
+        state = user_state.get(phone)
 
-            selection = message["interactive"]["list_reply"]["title"]
+        if state == "waiting_for_budget":
 
-            state = user_state.get(phone)
+            user_data[phone]["budget"] = selection
+            user_state[phone] = "waiting_for_details"
 
-            if state == "waiting_for_budget":
+            send_text(
+                phone,
+                "🌸 Please share below information\n\n"
+                "Quantity -\n"
+                "Date of requirement -\n"
+                "Location -"
+            )
 
-                user_data[phone]["budget"] = selection
-                user_state[phone] = "waiting_for_details"
+        else:
 
-                send_text(
-                    phone,
-                    """🌸 Please share below information
+            user_data[phone] = {
+                "occasion": selection
+            }
 
-Quantity -
-Date of requirement -
-Location -
-"""
-)
+            user_state[phone] = "waiting_for_budget"
+            send_budget_menu(phone)
 
-            else:
+    elif message["type"] == "text":
 
-                user_data[phone] = {
-                    "occasion": selection
-                }
+        text = message["text"]["body"].strip()
 
-                user_state[phone] = "waiting_for_budget"
+        state = user_state.get(phone)
 
-                send_budget_menu(phone)
+        if state == "waiting_for_details":
 
-        elif message["type"] == "text":
+            lines = [line.strip() for line in text.split("\n") if line.strip()]
 
-            text = message["text"]["body"].strip()
+            quantity = lines[0] if len(lines) > 0 else "Not Provided"
+            date_required = lines[1] if len(lines) > 1 else "Not Provided"
+            location = lines[2] if len(lines) > 2 else "Not Provided"
 
-            state = user_state.get(phone)
+            occasion = user_data[phone]["occasion"]
+            budget = user_data[phone]["budget"]
 
-            if state == "waiting_for_details":
+            summary = (
+                f"✅ Thank you.\n\n"
+                f"Our team will contact you shortly.\n\n"
+                f"Lead Summary\n\n"
+                f"Phone Number - {phone}\n"
+                f"Occasion - {occasion}\n"
+                f"Budget per hamper - {budget}\n"
+                f"Quantity - {quantity}\n"
+                f"Date of requirement - {date_required}\n"
+                f"Location - {location}"
+            )
 
-                lines = [line.strip() for line in text.split("\n") if line.strip()]
+            send_text(phone, summary)
 
-                quantity = lines[0] if len(lines) > 0 else "Not Provided"
-                date_required = lines[1] if len(lines) > 1 else "Not Provided"
-                location = lines[2] if len(lines) > 2 else "Not Provided"
+            user_state.pop(phone, None)
+            user_data.pop(phone, None)
 
-                occasion = user_data[phone]["occasion"]
-                budget = user_data[phone]["budget"]
+        else:
+            send_occasion_menu(phone)
 
-                summary = f"""✅ Thank you.
+except Exception as e:
+    print("ERROR:", str(e))
 
-Our team will contact you shortly.
+return "EVENT_RECEIVED", 200
 
-Lead Summary
-
-Phone Number - {phone}
-Occasion - {occasion}
-Budget per hamper - {budget}
-Quantity - {quantity}
-Date of requirement - {date_required}
-Location - {location}
-"""
-
-                send_text(phone, summary)
-
-                print("========== NEW LEAD ==========")
-                print("Phone Number:", phone)
-                print("Occasion:", occasion)
-                print("Budget:", budget)
-                print("Quantity:", quantity)
-                print("Date of requirement:", date_required)
-                print("Location:", location)
-                print("==============================")
-
-                user_state.pop(phone, None)
-                user_data.pop(phone, None)
-
-            else:
-
-                send_occasion_menu(phone)
-
-    except Exception as e:
-        print("ERROR:", str(e))
-
-    return "EVENT_RECEIVED", 200
-
-if __name__ == "__main__":
+if name == "main":
 app.run(
 host="0.0.0.0",
 port=int(os.environ.get("PORT", 10000))
