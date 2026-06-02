@@ -6,6 +6,7 @@ app = Flask(__name__)
 
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+GOOGLE_SHEET_WEBHOOK = os.getenv("GOOGLE_SHEET_WEBHOOK")
 PHONE_NUMBER_ID = "1135928302934605"
 
 user_state = {}
@@ -14,21 +15,46 @@ user_data = {}
 
 def send_text(phone, text):
     url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
+
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
     }
+
     payload = {
         "messaging_product": "whatsapp",
         "to": phone,
         "type": "text",
         "text": {"body": text}
     }
+
     requests.post(url, headers=headers, json=payload)
 
 
+def save_to_google_sheet(phone, occasion, budget, quantity, date_req, location):
+
+    payload = {
+        "phone": phone,
+        "occasion": occasion,
+        "budget": budget,
+        "quantity": quantity,
+        "date_required": date_req,
+        "location": location
+    }
+
+    print("SENDING TO GOOGLE SHEET")
+    print(payload)
+
+    if GOOGLE_SHEET_WEBHOOK:
+        response = requests.post(GOOGLE_SHEET_WEBHOOK, json=payload)
+        print("STATUS:", response.status_code)
+        print("RESPONSE:", response.text)
+
+
 def send_occasion_menu(phone):
+
     url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
+
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
@@ -40,8 +66,13 @@ def send_occasion_menu(phone):
         "type": "interactive",
         "interactive": {
             "type": "list",
-            "header": {"type": "text", "text": "👋 Welcome to HampersOnly4You"},
-            "body": {"text": "Choose an Occasion"},
+            "header": {
+                "type": "text",
+                "text": "👋 Welcome to HampersOnly4You"
+            },
+            "body": {
+                "text": "Choose an Occasion"
+            },
             "action": {
                 "button": "View Options",
                 "sections": [{
@@ -62,7 +93,9 @@ def send_occasion_menu(phone):
 
 
 def send_budget_menu(phone):
+
     url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
+
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
@@ -74,7 +107,9 @@ def send_budget_menu(phone):
         "type": "interactive",
         "interactive": {
             "type": "list",
-            "body": {"text": "Please select your budget per hamper"},
+            "body": {
+                "text": "Please select your budget per hamper"
+            },
             "action": {
                 "button": "Select Budget",
                 "sections": [{
@@ -100,6 +135,7 @@ def home():
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+
     if request.method == "GET":
         mode = request.args.get("hub.mode")
         token = request.args.get("hub.verify_token")
@@ -122,9 +158,11 @@ def webhook():
         phone = message["from"]
 
         if message["type"] == "interactive":
+
             selection = message["interactive"]["list_reply"]["title"]
 
             if user_state.get(phone) == "waiting_budget":
+
                 user_data[phone]["budget"] = selection
                 user_state[phone] = "waiting_details"
 
@@ -134,14 +172,20 @@ def webhook():
                 )
 
             else:
-                user_data[phone] = {"occasion": selection}
+
+                user_data[phone] = {
+                    "occasion": selection
+                }
+
                 user_state[phone] = "waiting_budget"
                 send_budget_menu(phone)
 
         elif message["type"] == "text":
+
             text = message["text"]["body"].strip()
 
             if user_state.get(phone) == "waiting_details":
+
                 lines = [x.strip() for x in text.splitlines() if x.strip()]
 
                 quantity = lines[0] if len(lines) > 0 else "Not Provided"
@@ -164,19 +208,19 @@ Quantity - {quantity}
 Date of requirement - {date_req}
 Location - {location}"""
 
-              send_text(phone, summary)
+                send_text(phone, summary)
 
-save_to_google_sheet(
-    phone,
-    occasion,
-    budget,
-    quantity,
-    date_req,
-    location
-)
+                save_to_google_sheet(
+                    phone,
+                    occasion,
+                    budget,
+                    quantity,
+                    date_req,
+                    location
+                )
 
-user_state.pop(phone, None)
-user_data.pop(phone, None)
+                user_state.pop(phone, None)
+                user_data.pop(phone, None)
 
             else:
                 send_occasion_menu(phone)
@@ -188,25 +232,7 @@ user_data.pop(phone, None)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-
-def save_to_google_sheet(phone, occasion, budget, quantity, date_req, location):
-
-webhook = os.getenv("GOOGLE_SHEET_WEBHOOK")
-
-payload = {
-    "phone": phone,
-    "occasion": occasion,
-    "budget": budget,
-    "quantity": quantity,
-    "date_required": date_req,
-    "location": location
-}
-
-print("SENDING TO GOOGLE SHEET")
-print(payload)
-
-response = requests.post(webhook, json=payload)
-
-print("STATUS:", response.status_code)
-print("RESPONSE:", response.text)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000))
+    )
