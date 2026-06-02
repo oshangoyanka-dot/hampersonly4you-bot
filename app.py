@@ -1,21 +1,20 @@
-python
 from flask import Flask, request
-import requests
 import os
+import json
+import requests
 
 app = Flask(__name__)
 
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-
 PHONE_NUMBER_ID = "1135928302934605"
 
-user_state = {}
-user_category = {}
+user_data = {}
 
+# ---------------- SEND MESSAGE ---------------- #
 
-def send_text(phone, text):
-    url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
+def send_text(to, message):
+    url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -24,16 +23,18 @@ def send_text(phone, text):
 
     payload = {
         "messaging_product": "whatsapp",
-        "to": phone,
+        "to": to,
         "type": "text",
-        "text": {"body": text}
+        "text": {
+            "body": message
+        }
     }
 
     requests.post(url, headers=headers, json=payload)
 
 
-def send_menu(phone):
-    url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
+def send_occasion_list(to):
+    url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -42,7 +43,7 @@ def send_menu(phone):
 
     payload = {
         "messaging_product": "whatsapp",
-        "to": phone,
+        "to": to,
         "type": "interactive",
         "interactive": {
             "type": "list",
@@ -51,33 +52,33 @@ def send_menu(phone):
                 "text": "👋 Welcome to HampersOnly4You"
             },
             "body": {
-                "text": "How can we help you today?"
+                "text": "Choose an Occasion"
             },
             "action": {
                 "button": "View Options",
                 "sections": [
                     {
-                        "title": "Categories",
+                        "title": "Occasions",
                         "rows": [
                             {
                                 "id": "birthday",
-                                "title": "Birthday Hampers"
+                                "title": "🎂 Birthday"
                             },
                             {
                                 "id": "anniversary",
-                                "title": "Anniversary Hampers"
+                                "title": "❤️ Anniversary"
+                            },
+                            {
+                                "id": "wedding",
+                                "title": "💍 Wedding"
                             },
                             {
                                 "id": "corporate",
-                                "title": "Corporate Gifting"
+                                "title": "🏢 Corporate Gifts"
                             },
                             {
                                 "id": "custom",
-                                "title": "Custom Hampers"
-                            },
-                            {
-                                "id": "team",
-                                "title": "Talk to Team"
+                                "title": "🎁 Custom Hamper"
                             }
                         ]
                     }
@@ -89,6 +90,57 @@ def send_menu(phone):
     requests.post(url, headers=headers, json=payload)
 
 
+def send_budget_list(to):
+    url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {
+                "text": "Please select your budget"
+            },
+            "action": {
+                "button": "Select Budget",
+                "sections": [
+                    {
+                        "title": "Budget",
+                        "rows": [
+                            {
+                                "id": "under1000",
+                                "title": "Under ₹1000"
+                            },
+                            {
+                                "id": "1000-3000",
+                                "title": "₹1000 - ₹3000"
+                            },
+                            {
+                                "id": "3000-5000",
+                                "title": "₹3000 - ₹5000"
+                            },
+                            {
+                                "id": "5000plus",
+                                "title": "₹5000+"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+
+    requests.post(url, headers=headers, json=payload)
+
+
+# ---------------- WEBHOOK ---------------- #
+
 @app.route("/")
 def home():
     return "HampersOnly4You Bot Running"
@@ -98,84 +150,106 @@ def home():
 def webhook():
 
     if request.method == "GET":
+
         mode = request.args.get("hub.mode")
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
 
-        if mode == "subscribe" and token == VERIFY_TOKEN:
-            return challenge, 200
+        if mode and token:
+            if mode == "subscribe" and token == VERIFY_TOKEN:
+                return challenge, 200
 
         return "Verification failed", 403
 
-    data = request.get_json(silent=True)
+    if request.method == "POST":
 
-    try:
-        value = data["entry"][0]["changes"][0]["value"]
+        data = request.get_json()
 
-        if "messages" not in value:
-            return "EVENT_RECEIVED", 200
+        try:
 
-        message = value["messages"][0]
-        phone = message["from"]
+            entry = data["entry"][0]
+            change = entry["changes"][0]
+            value = change["value"]
 
-        if message["type"] == "interactive":
+            if "messages" not in value:
+                return "ok", 200
 
-            category = message["interactive"]["list_reply"]["title"]
+            message = value["messages"][0]
+            sender = message["from"]
 
-            user_state[phone] = "waiting_requirements"
-            user_category[phone] = category
+            # ---------- TEXT ---------- #
 
-            send_text(
-                phone,
-                f"""🌸 {category}
+            if message["type"] == "text":
 
-Please share your requirements.
+                text = message["text"]["body"].strip()
 
-Quantity -
-Date of requirement -
-Location -
+                if sender not in user_data:
 
-Example:
+                    user_data[sender] = {
+                        "step": "occasion"
+                    }
 
-Quantity - 50
-Date of requirement - 20 June 2026
-Location - Delhi"""
-            )
+                    send_occasion_list(sender)
 
-        elif message["type"] == "text":
+                elif user_data[sender]["step"] == "details":
 
-            text = message["text"]["body"].strip()
+                    occasion = user_data[sender]["occasion"]
+                    budget = user_data[sender]["budget"]
 
-            if user_state.get(phone) == "waiting_requirements":
-
-                category = user_category.get(phone, "General Enquiry")
-
-                summary = f"""✅ Thank you.
+                    summary = f"""✅ Thank you.
 
 Our team will contact you shortly.
 
 Lead Summary
 
-Occasion - {category}
+Occasion - {occasion}
+Budget per hamper - {budget}
 
 {text}
 """
 
-                send_text(phone, summary)
+                    send_text(sender, summary)
 
-                user_state.pop(phone, None)
-                user_category.pop(phone, None)
+                    del user_data[sender]
 
-            else:
-                send_menu(phone)
+            # ---------- LIST REPLY ---------- #
 
-    except Exception as e:
-        print("ERROR:", str(e), flush=True)
+            elif message["type"] == "interactive":
 
-    return "EVENT_RECEIVED", 200
+                reply_id = message["interactive"]["list_reply"]["id"]
+                title = message["interactive"]["list_reply"]["title"]
+
+                if sender not in user_data:
+                    user_data[sender] = {}
+
+                step = user_data[sender].get("step")
+
+                if step == "occasion":
+
+                    user_data[sender]["occasion"] = title
+                    user_data[sender]["step"] = "budget"
+
+                    send_budget_list(sender)
+
+                elif step == "budget":
+
+                    user_data[sender]["budget"] = title
+                    user_data[sender]["step"] = "details"
+
+                    send_text(
+                        sender,
+                        """Please share below information:
+
+Quantity -
+Date of requirement -
+Location -"""
+                    )
+
+        except Exception as e:
+            print("ERROR:", str(e))
+
+        return "EVENT_RECEIVED", 200
 
 
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
