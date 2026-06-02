@@ -1,20 +1,20 @@
 from flask import Flask, request
-import os
 import requests
+import os
 
 app = Flask(__name__)
 
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-
 PHONE_NUMBER_ID = "1135928302934605"
 
-users = {}
+user_state = {}
+user_data = {}
 
 
-def send_text(to, text):
+def send_text(phone, message):
 
-    url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
+    url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -23,17 +23,19 @@ def send_text(to, text):
 
     payload = {
         "messaging_product": "whatsapp",
-        "to": to,
+        "to": phone,
         "type": "text",
-        "text": {"body": text}
+        "text": {
+            "body": message
+        }
     }
 
     requests.post(url, headers=headers, json=payload)
 
 
-def send_occasion_menu(to):
+def send_occasion_list(phone):
 
-    url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
+    url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -42,12 +44,16 @@ def send_occasion_menu(to):
 
     payload = {
         "messaging_product": "whatsapp",
-        "to": to,
+        "to": phone,
         "type": "interactive",
         "interactive": {
             "type": "list",
+            "header": {
+                "type": "text",
+                "text": "👋 Welcome to HampersOnly4You"
+            },
             "body": {
-                "text": "👋 Welcome to HampersOnly4You\n\nChoose an Occasion"
+                "text": "Choose an Occasion"
             },
             "action": {
                 "button": "View Options",
@@ -70,9 +76,9 @@ def send_occasion_menu(to):
     requests.post(url, headers=headers, json=payload)
 
 
-def send_budget_menu(to):
+def send_budget_list(phone):
 
-    url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
+    url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -81,7 +87,7 @@ def send_budget_menu(to):
 
     payload = {
         "messaging_product": "whatsapp",
-        "to": to,
+        "to": phone,
         "type": "interactive",
         "interactive": {
             "type": "list",
@@ -92,12 +98,12 @@ def send_budget_menu(to):
                 "button": "Select Budget",
                 "sections": [
                     {
-                        "title": "Budget",
+                        "title": "Budget Range",
                         "rows": [
-                            {"id": "b1", "title": "Under ₹1000"},
-                            {"id": "b2", "title": "₹1000 - ₹3000"},
-                            {"id": "b3", "title": "₹3000 - ₹5000"},
-                            {"id": "b4", "title": "₹5000+"}
+                            {"id": "under1000", "title": "Under ₹1000"},
+                            {"id": "1000_3000", "title": "₹1000 - ₹3000"},
+                            {"id": "3000_5000", "title": "₹3000 - ₹5000"},
+                            {"id": "5000plus", "title": "₹5000+"}
                         ]
                     }
                 ]
@@ -131,112 +137,121 @@ def webhook():
 
         data = request.get_json(force=True)
 
+        print("==============")
+        print(data)
+        print("==============")
+
         try:
 
-            value = data["entry"][0]["changes"][0]["value"]
+            entry = data["entry"][0]
+            change = entry["changes"][0]
+            value = change["value"]
 
             if "messages" not in value:
-                return "OK", 200
+                return "ok", 200
 
             message = value["messages"][0]
-            sender = message["from"]
+            phone = message["from"]
 
-            if sender not in users:
-
-                users[sender] = {"step": "occasion"}
-
-                send_occasion_menu(sender)
-
-                return "OK", 200
-
-            user = users[sender]
-
+            # LIST REPLY
             if message["type"] == "interactive":
 
-                selection = message["interactive"]["list_reply"]["id"]
+                interactive = message["interactive"]
 
-                if user["step"] == "occasion":
+                if interactive["type"] == "list_reply":
 
-                    user["occasion"] = selection
-                    user["step"] = "budget"
+                    selected_id = interactive["list_reply"]["id"]
+                    selected_title = interactive["list_reply"]["title"]
 
-                    send_budget_menu(sender)
+                    # Occasion selected
+                    if selected_id in [
+                        "birthday",
+                        "anniversary",
+                        "wedding",
+                        "corporate",
+                        "custom"
+                    ]:
 
-                    return "OK", 200
+                        user_data[phone] = {
+                            "occasion": selected_title
+                        }
 
-                elif user["step"] == "budget":
+                        send_budget_list(phone)
 
-                    user["budget"] = selection
-                    user["step"] = "name"
+                    # Budget selected
+                    elif selected_id in [
+                        "under1000",
+                        "1000_3000",
+                        "3000_5000",
+                        "5000plus"
+                    ]:
 
-                    send_text(sender, "Please enter your name.")
+                        user_data[phone]["budget"] = selected_title
+                        user_data[phone]["details"] = []
 
-                    return "OK", 200
+                        user_state[phone] = "collecting_details"
 
-            if message["type"] == "text":
+                        send_text(
+                            phone,
+                            f"""🌸 Please share the following details.
 
-                text = message["text"]["body"]
+Quantity -
+Occasion - {user_data[phone]['occasion']}
+Date of requirement -
+Location -
+Budget per hamper - {selected_title}
 
-                if user["step"] == "name":
+You may send everything in one message.
 
-                    user["name"] = text
-                    user["step"] = "address"
+OR
 
-                    send_text(sender, "Please enter your address.")
+Send multiple messages and type DONE when finished."""
+                        )
 
-                elif user["step"] == "address":
+            elif message["type"] == "text":
 
-                    user["address"] = text
-                    user["step"] = "quantity"
+                text = message["text"]["body"].strip()
 
-                    send_text(sender, "Please enter quantity required.")
+                state = user_state.get(phone)
 
-                elif user["step"] == "quantity":
+                if state == "collecting_details":
 
-                    user["quantity"] = text
-                    user["step"] = "date"
+                    if text.upper() == "DONE":
 
-                    send_text(sender, "Please enter date of requirement.")
+                        details = "\n".join(
+                            user_data[phone]["details"]
+                        )
 
-                elif user["step"] == "date":
-
-                    user["date"] = text
-                    user["step"] = "location"
-
-                    send_text(sender, "Please enter delivery location.")
-
-                elif user["step"] == "location":
-
-                    user["location"] = text
-
-                    summary = f"""
-✅ Thank you.
+                        reply = f"""✅ Thank you.
 
 Our team will contact you shortly.
 
 Lead Summary
 
-Occasion: {user['occasion']}
-Budget: {user['budget']}
-Name: {user['name']}
-Address: {user['address']}
-Quantity: {user['quantity']}
-Date of Requirement: {user['date']}
-Location: {user['location']}
+{details}
+
+Occasion - {user_data[phone]['occasion']}
+Budget per hamper - {user_data[phone]['budget']}
 """
 
-                    send_text(sender, summary)
+                        send_text(phone, reply)
 
-                    print("NEW LEAD:", user)
+                        user_state.pop(phone, None)
+                        user_data.pop(phone, None)
 
-                    del users[sender]
+                    else:
+
+                        user_data[phone]["details"].append(text)
+
+                else:
+
+                    send_occasion_list(phone)
 
         except Exception as e:
-
-            print("ERROR:", e, flush=True)
+            print("ERROR:", e)
 
         return "EVENT_RECEIVED", 200
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    app.run(host="0.0.0.0", port=10000)
