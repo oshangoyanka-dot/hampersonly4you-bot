@@ -13,9 +13,8 @@ PHONE_NUMBER_ID = "1135928302934605"
 user_state = {}
 user_data = {}
 
-# ---------------- SEND TEXT ---------------- #
 
-def send_text(phone, message):
+def send_text(phone, text):
 
     url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
 
@@ -29,16 +28,14 @@ def send_text(phone, message):
         "to": phone,
         "type": "text",
         "text": {
-            "body": message
+            "body": text
         }
     }
 
     requests.post(url, headers=headers, json=payload)
 
 
-# ---------------- OCCASION LIST ---------------- #
-
-def send_occasion_list(phone):
+def send_main_menu(phone):
 
     url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
 
@@ -58,33 +55,33 @@ def send_occasion_list(phone):
                 "text": "👋 Welcome to HampersOnly4You"
             },
             "body": {
-                "text": "Choose an Occasion"
+                "text": "How can we help you today?"
             },
             "action": {
                 "button": "View Options",
                 "sections": [
                     {
-                        "title": "Occasions",
+                        "title": "Choose Category",
                         "rows": [
                             {
                                 "id": "birthday",
-                                "title": "🎂 Birthday"
+                                "title": "🎂 Birthday Hampers"
                             },
                             {
                                 "id": "anniversary",
-                                "title": "❤️ Anniversary"
-                            },
-                            {
-                                "id": "wedding",
-                                "title": "💍 Wedding"
+                                "title": "❤️ Anniversary Hampers"
                             },
                             {
                                 "id": "corporate",
-                                "title": "🏢 Corporate Gifts"
+                                "title": "🏢 Corporate Gifting"
                             },
                             {
                                 "id": "custom",
-                                "title": "🎁 Custom Hamper"
+                                "title": "🎁 Custom Hampers"
+                            },
+                            {
+                                "id": "team",
+                                "title": "👨‍💼 Talk to Team"
                             }
                         ]
                     }
@@ -95,67 +92,11 @@ def send_occasion_list(phone):
 
     requests.post(url, headers=headers, json=payload)
 
-
-# ---------------- BUDGET LIST ---------------- #
-
-def send_budget_list(phone):
-
-    url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
-
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": phone,
-        "type": "interactive",
-        "interactive": {
-            "type": "list",
-            "body": {
-                "text": "Please select your budget"
-            },
-            "action": {
-                "button": "Select Budget",
-                "sections": [
-                    {
-                        "title": "Budget Range",
-                        "rows": [
-                            {
-                                "id": "under1000",
-                                "title": "Under ₹1000"
-                            },
-                            {
-                                "id": "1000_3000",
-                                "title": "₹1000 - ₹3000"
-                            },
-                            {
-                                "id": "3000_5000",
-                                "title": "₹3000 - ₹5000"
-                            },
-                            {
-                                "id": "5000plus",
-                                "title": "₹5000+"
-                            }
-                        ]
-                    }
-                ]
-            }
-        }
-    }
-
-    requests.post(url, headers=headers, json=payload)
-
-
-# ---------------- HOME ---------------- #
 
 @app.route("/")
 def home():
     return "HampersOnly4You Bot Running"
 
-
-# ---------------- WEBHOOK ---------------- #
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
@@ -175,15 +116,9 @@ def webhook():
 
         data = request.get_json(force=True)
 
-        print("==============")
-        print(data)
-        print("==============")
-
         try:
 
-            entry = data["entry"][0]
-            change = entry["changes"][0]
-            value = change["value"]
+            value = data["entry"][0]["changes"][0]["value"]
 
             if "messages" not in value:
                 return "EVENT_RECEIVED", 200
@@ -191,61 +126,38 @@ def webhook():
             message = value["messages"][0]
             phone = message["from"]
 
-            # LIST SELECTIONS
+            # LIST SELECTION
 
             if message["type"] == "interactive":
 
-                interactive = message["interactive"]
+                selection = message["interactive"]["list_reply"]["title"]
 
-                if interactive["type"] == "list_reply":
+                user_state[phone] = "waiting_for_requirements"
 
-                    selected_id = interactive["list_reply"]["id"]
-                    selected_title = interactive["list_reply"]["title"]
+                user_data[phone] = {
+                    "category": selection
+                }
 
-                    # OCCASION
+                send_text(
+                    phone,
+                    f"""🌸 {selection}
 
-                    if selected_id in [
-                        "birthday",
-                        "anniversary",
-                        "wedding",
-                        "corporate",
-                        "custom"
-                    ]:
+Please share your requirements.
 
-                        user_data[phone] = {
-                            "occasion": selected_title
-                        }
+You can simply type:
 
-                        send_budget_list(phone)
+• Quantity
+• Budget
+• Date required
+• Delivery location
 
-                    # BUDGET
+Example:
 
-                    elif selected_id in [
-                        "under1000",
-                        "1000_3000",
-                        "3000_5000",
-                        "5000plus"
-                    ]:
-
-                        user_data[phone]["budget"] = selected_title
-                        user_state[phone] = "waiting_details"
-
-                        send_text(
-                            phone,
-                            """🌸 Please share the following details:
-
-Quantity -
-Date of requirement -
-Location -
-
-You may send everything in one message.
-
-OR
-
-Send multiple messages and type DONE when finished."""
-                        )
-
-            # TEXT MESSAGES
+Need 50 hampers
+Budget ₹2000 each
+Delivery in Delhi
+Required by 20 June"""
+                )
 
             elif message["type"] == "text":
 
@@ -253,44 +165,37 @@ Send multiple messages and type DONE when finished."""
 
                 state = user_state.get(phone)
 
-                # Collect details
+                if state == "waiting_for_requirements":
 
-                if state == "waiting_details":
+                    category = user_data[phone]["category"]
 
-                    if "details" not in user_data[phone]:
-                        user_data[phone]["details"] = []
+                    send_text(
+                        phone,
+                        f"""✅ Thank you.
 
-                    if text.upper() == "DONE":
+Our team has received your enquiry.
 
-                        details = "\n".join(
-                            user_data[phone]["details"]
-                        )
+Category:
+{category}
 
-                        reply = f"""✅ Thank you.
+Summary:
 
-Our team will contact you shortly.
+{text}
 
-Lead Summary
+Our team will contact you shortly."""
+                    )
 
-{details}
+                    print("NEW LEAD")
+                    print("Phone:", phone)
+                    print("Category:", category)
+                    print("Requirement:", text)
 
-Occasion - {user_data[phone]['occasion']}
-Budget per hamper - {user_data[phone]['budget']}
-"""
-
-                        send_text(phone, reply)
-
-                        user_state.pop(phone, None)
-                        user_data.pop(phone, None)
-
-                    else:
-
-                        user_data[phone]["details"].append(text)
+                    user_state.pop(phone, None)
+                    user_data.pop(phone, None)
 
                 else:
 
-                    # Start conversation
-                    send_occasion_list(phone)
+                    send_main_menu(phone)
 
         except Exception as e:
             print("ERROR:", e)
@@ -299,5 +204,8 @@ Budget per hamper - {user_data[phone]['budget']}
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000))
+    )
 ```
