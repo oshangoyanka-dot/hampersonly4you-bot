@@ -11,12 +11,11 @@ WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = "1135928302934605"
 
 user_state = {}
-user_data = {}
+user_category = {}
 
 
 def send_text(phone, text):
-
-    url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
+    url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -27,17 +26,14 @@ def send_text(phone, text):
         "messaging_product": "whatsapp",
         "to": phone,
         "type": "text",
-        "text": {
-            "body": text
-        }
+        "text": {"body": text}
     }
 
     requests.post(url, headers=headers, json=payload)
 
 
-def send_main_menu(phone):
-
-    url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
+def send_menu(phone):
+    url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -61,27 +57,27 @@ def send_main_menu(phone):
                 "button": "View Options",
                 "sections": [
                     {
-                        "title": "Choose Category",
+                        "title": "Categories",
                         "rows": [
                             {
                                 "id": "birthday",
-                                "title": "🎂 Birthday Hampers"
+                                "title": "Birthday Hampers"
                             },
                             {
                                 "id": "anniversary",
-                                "title": "❤️ Anniversary Hampers"
+                                "title": "Anniversary Hampers"
                             },
                             {
                                 "id": "corporate",
-                                "title": "🏢 Corporate Gifting"
+                                "title": "Corporate Gifting"
                             },
                             {
                                 "id": "custom",
-                                "title": "🎁 Custom Hampers"
+                                "title": "Custom Hampers"
                             },
                             {
                                 "id": "team",
-                                "title": "👨‍💼 Talk to Team"
+                                "title": "Talk to Team"
                             }
                         ]
                     }
@@ -102,7 +98,6 @@ def home():
 def webhook():
 
     if request.method == "GET":
-
         mode = request.args.get("hub.mode")
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
@@ -112,95 +107,72 @@ def webhook():
 
         return "Verification failed", 403
 
-    if request.method == "POST":
+    data = request.get_json(silent=True)
 
-        data = request.get_json(force=True)
+    try:
+        value = data["entry"][0]["changes"][0]["value"]
 
-        try:
+        if "messages" not in value:
+            return "EVENT_RECEIVED", 200
 
-            value = data["entry"][0]["changes"][0]["value"]
+        message = value["messages"][0]
+        phone = message["from"]
 
-            if "messages" not in value:
-                return "EVENT_RECEIVED", 200
+        if message["type"] == "interactive":
 
-            message = value["messages"][0]
-            phone = message["from"]
+            category = message["interactive"]["list_reply"]["title"]
 
-            # LIST SELECTION
+            user_state[phone] = "waiting_requirements"
+            user_category[phone] = category
 
-            if message["type"] == "interactive":
-
-                selection = message["interactive"]["list_reply"]["title"]
-
-                user_state[phone] = "waiting_for_requirements"
-
-                user_data[phone] = {
-                    "category": selection
-                }
-
-                send_text(
-                    phone,
-                    f"""🌸 {selection}
+            send_text(
+                phone,
+                f"""🌸 {category}
 
 Please share your requirements.
 
-You can simply type:
-
-• Quantity
-• Budget
-• Date required
-• Delivery location
+Quantity -
+Date of requirement -
+Location -
 
 Example:
 
-Need 50 hampers
-Budget ₹2000 each
-Delivery in Delhi
-Required by 20 June"""
-                )
+Quantity - 50
+Date of requirement - 20 June 2026
+Location - Delhi"""
+            )
 
-            elif message["type"] == "text":
+        elif message["type"] == "text":
 
-                text = message["text"]["body"].strip()
+            text = message["text"]["body"].strip()
 
-                state = user_state.get(phone)
+            if user_state.get(phone) == "waiting_requirements":
 
-                if state == "waiting_for_requirements":
+                category = user_category.get(phone, "General Enquiry")
 
-                    category = user_data[phone]["category"]
+                summary = f"""✅ Thank you.
 
-                    send_text(
-                        phone,
-                        f"""✅ Thank you.
+Our team will contact you shortly.
 
-Our team has received your enquiry.
+Lead Summary
 
-Category:
-{category}
-
-Summary:
+Occasion - {category}
 
 {text}
+"""
 
-Our team will contact you shortly."""
-                    )
+                send_text(phone, summary)
 
-                    print("NEW LEAD")
-                    print("Phone:", phone)
-                    print("Category:", category)
-                    print("Requirement:", text)
+                user_state.pop(phone, None)
+                user_category.pop(phone, None)
 
-                    user_state.pop(phone, None)
-                    user_data.pop(phone, None)
+            else:
+                send_menu(phone)
 
-                else:
+    except Exception as e:
+        print("ERROR:", str(e), flush=True)
 
-                    send_main_menu(phone)
-
-        except Exception as e:
-            print("ERROR:", e)
-
-        return "EVENT_RECEIVED", 200
+    return "EVENT_RECEIVED", 200
 
 
 if __name__ == "__main__":
