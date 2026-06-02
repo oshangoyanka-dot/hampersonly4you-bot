@@ -1,19 +1,20 @@
 from flask import Flask, request
-import os
-import json
 import requests
+import os
 
 app = Flask(__name__)
 
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+
 PHONE_NUMBER_ID = "1135928302934605"
 
+user_state = {}
 user_data = {}
 
-# ---------------- SEND MESSAGE ---------------- #
 
-def send_text(to, message):
+def send_text(phone, text):
+
     url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
@@ -23,17 +24,18 @@ def send_text(to, message):
 
     payload = {
         "messaging_product": "whatsapp",
-        "to": to,
+        "to": phone,
         "type": "text",
         "text": {
-            "body": message
+            "body": text
         }
     }
 
     requests.post(url, headers=headers, json=payload)
 
 
-def send_occasion_list(to):
+def send_main_menu(phone):
+
     url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
@@ -43,7 +45,7 @@ def send_occasion_list(to):
 
     payload = {
         "messaging_product": "whatsapp",
-        "to": to,
+        "to": phone,
         "type": "interactive",
         "interactive": {
             "type": "list",
@@ -52,33 +54,33 @@ def send_occasion_list(to):
                 "text": "👋 Welcome to HampersOnly4You"
             },
             "body": {
-                "text": "Choose an Occasion"
+                "text": "How can we help you today?"
             },
             "action": {
                 "button": "View Options",
                 "sections": [
                     {
-                        "title": "Occasions",
+                        "title": "Choose Category",
                         "rows": [
                             {
                                 "id": "birthday",
-                                "title": "🎂 Birthday"
+                                "title": "🎂 Birthday Hampers"
                             },
                             {
                                 "id": "anniversary",
-                                "title": "❤️ Anniversary"
-                            },
-                            {
-                                "id": "wedding",
-                                "title": "💍 Wedding"
+                                "title": "❤️ Anniversary Hampers"
                             },
                             {
                                 "id": "corporate",
-                                "title": "🏢 Corporate Gifts"
+                                "title": "🏢 Corporate Gifting"
                             },
                             {
                                 "id": "custom",
-                                "title": "🎁 Custom Hamper"
+                                "title": "🎁 Custom Hampers"
+                            },
+                            {
+                                "id": "team",
+                                "title": "👨‍💼 Talk to Team"
                             }
                         ]
                     }
@@ -89,57 +91,6 @@ def send_occasion_list(to):
 
     requests.post(url, headers=headers, json=payload)
 
-
-def send_budget_list(to):
-    url = f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages"
-
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "interactive",
-        "interactive": {
-            "type": "list",
-            "body": {
-                "text": "Please select your budget"
-            },
-            "action": {
-                "button": "Select Budget",
-                "sections": [
-                    {
-                        "title": "Budget",
-                        "rows": [
-                            {
-                                "id": "under1000",
-                                "title": "Under ₹1000"
-                            },
-                            {
-                                "id": "1000-3000",
-                                "title": "₹1000 - ₹3000"
-                            },
-                            {
-                                "id": "3000-5000",
-                                "title": "₹3000 - ₹5000"
-                            },
-                            {
-                                "id": "5000plus",
-                                "title": "₹5000+"
-                            }
-                        ]
-                    }
-                ]
-            }
-        }
-    }
-
-    requests.post(url, headers=headers, json=payload)
-
-
-# ---------------- WEBHOOK ---------------- #
 
 @app.route("/")
 def home():
@@ -155,101 +106,103 @@ def webhook():
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
 
-        if mode and token:
-            if mode == "subscribe" and token == VERIFY_TOKEN:
-                return challenge, 200
+        if mode == "subscribe" and token == VERIFY_TOKEN:
+            return challenge, 200
 
         return "Verification failed", 403
 
     if request.method == "POST":
 
-        data = request.get_json()
+        data = request.get_json(force=True)
 
         try:
 
-            entry = data["entry"][0]
-            change = entry["changes"][0]
-            value = change["value"]
+            value = data["entry"][0]["changes"][0]["value"]
 
             if "messages" not in value:
-                return "ok", 200
+                return "EVENT_RECEIVED", 200
 
             message = value["messages"][0]
-            sender = message["from"]
+            phone = message["from"]
 
-            # ---------- TEXT ---------- #
+            # LIST SELECTION
 
-            if message["type"] == "text":
+            if message["type"] == "interactive":
+
+                selection = message["interactive"]["list_reply"]["title"]
+
+                user_state[phone] = "waiting_for_requirements"
+
+                user_data[phone] = {
+                    "category": selection
+                }
+
+                send_text(
+                    phone,
+                    f"""🌸 {selection}
+
+Please share your requirements.
+
+You can simply type:
+
+• Quantity
+• Budget
+• Date required
+• Delivery location
+
+Example:
+
+Need 50 hampers
+Budget ₹2000 each
+Delivery in Delhi
+Required by 20 June"""
+                )
+
+            elif message["type"] == "text":
 
                 text = message["text"]["body"].strip()
 
-                if sender not in user_data:
+                state = user_state.get(phone)
 
-                    user_data[sender] = {
-                        "step": "occasion"
-                    }
+                if state == "waiting_for_requirements":
 
-                    send_occasion_list(sender)
-
-                elif user_data[sender]["step"] == "details":
-
-                    occasion = user_data[sender]["occasion"]
-                    budget = user_data[sender]["budget"]
-
-                    summary = f"""✅ Thank you.
-
-Our team will contact you shortly.
-
-Lead Summary
-
-Occasion - {occasion}
-Budget per hamper - {budget}
-
-{text}
-"""
-
-                    send_text(sender, summary)
-
-                    del user_data[sender]
-
-            # ---------- LIST REPLY ---------- #
-
-            elif message["type"] == "interactive":
-
-                reply_id = message["interactive"]["list_reply"]["id"]
-                title = message["interactive"]["list_reply"]["title"]
-
-                if sender not in user_data:
-                    user_data[sender] = {}
-
-                step = user_data[sender].get("step")
-
-                if step == "occasion":
-
-                    user_data[sender]["occasion"] = title
-                    user_data[sender]["step"] = "budget"
-
-                    send_budget_list(sender)
-
-                elif step == "budget":
-
-                    user_data[sender]["budget"] = title
-                    user_data[sender]["step"] = "details"
+                    category = user_data[phone]["category"]
 
                     send_text(
-                        sender,
-                        """Please share below information:
+                        phone,
+                        f"""✅ Thank you.
 
-Quantity -
-Date of requirement -
-Location -"""
+Our team has received your enquiry.
+
+Category:
+{category}
+
+Summary:
+
+{text}
+
+Our team will contact you shortly."""
                     )
 
+                    print("NEW LEAD")
+                    print("Phone:", phone)
+                    print("Category:", category)
+                    print("Requirement:", text)
+
+                    user_state.pop(phone, None)
+                    user_data.pop(phone, None)
+
+                else:
+
+                    send_main_menu(phone)
+
         except Exception as e:
-            print("ERROR:", str(e))
+            print("ERROR:", e)
 
         return "EVENT_RECEIVED", 200
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)))
