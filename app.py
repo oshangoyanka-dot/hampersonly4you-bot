@@ -1,3 +1,4 @@
+```python
 from flask import Flask, request
 import requests
 import os
@@ -6,11 +7,13 @@ app = Flask(__name__)
 
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+
 PHONE_NUMBER_ID = "1135928302934605"
 
 user_state = {}
 user_data = {}
 
+# ---------------- SEND TEXT ---------------- #
 
 def send_text(phone, message):
 
@@ -32,6 +35,8 @@ def send_text(phone, message):
 
     requests.post(url, headers=headers, json=payload)
 
+
+# ---------------- OCCASION LIST ---------------- #
 
 def send_occasion_list(phone):
 
@@ -61,11 +66,26 @@ def send_occasion_list(phone):
                     {
                         "title": "Occasions",
                         "rows": [
-                            {"id": "birthday", "title": "🎂 Birthday"},
-                            {"id": "anniversary", "title": "❤️ Anniversary"},
-                            {"id": "wedding", "title": "💍 Wedding"},
-                            {"id": "corporate", "title": "🏢 Corporate Gifts"},
-                            {"id": "custom", "title": "🎁 Custom Hamper"}
+                            {
+                                "id": "birthday",
+                                "title": "🎂 Birthday"
+                            },
+                            {
+                                "id": "anniversary",
+                                "title": "❤️ Anniversary"
+                            },
+                            {
+                                "id": "wedding",
+                                "title": "💍 Wedding"
+                            },
+                            {
+                                "id": "corporate",
+                                "title": "🏢 Corporate Gifts"
+                            },
+                            {
+                                "id": "custom",
+                                "title": "🎁 Custom Hamper"
+                            }
                         ]
                     }
                 ]
@@ -75,6 +95,8 @@ def send_occasion_list(phone):
 
     requests.post(url, headers=headers, json=payload)
 
+
+# ---------------- BUDGET LIST ---------------- #
 
 def send_budget_list(phone):
 
@@ -100,10 +122,22 @@ def send_budget_list(phone):
                     {
                         "title": "Budget Range",
                         "rows": [
-                            {"id": "under1000", "title": "Under ₹1000"},
-                            {"id": "1000_3000", "title": "₹1000 - ₹3000"},
-                            {"id": "3000_5000", "title": "₹3000 - ₹5000"},
-                            {"id": "5000plus", "title": "₹5000+"}
+                            {
+                                "id": "under1000",
+                                "title": "Under ₹1000"
+                            },
+                            {
+                                "id": "1000_3000",
+                                "title": "₹1000 - ₹3000"
+                            },
+                            {
+                                "id": "3000_5000",
+                                "title": "₹3000 - ₹5000"
+                            },
+                            {
+                                "id": "5000plus",
+                                "title": "₹5000+"
+                            }
                         ]
                     }
                 ]
@@ -114,10 +148,14 @@ def send_budget_list(phone):
     requests.post(url, headers=headers, json=payload)
 
 
+# ---------------- HOME ---------------- #
+
 @app.route("/")
 def home():
     return "HampersOnly4You Bot Running"
 
+
+# ---------------- WEBHOOK ---------------- #
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
@@ -148,12 +186,13 @@ def webhook():
             value = change["value"]
 
             if "messages" not in value:
-                return "ok", 200
+                return "EVENT_RECEIVED", 200
 
             message = value["messages"][0]
             phone = message["from"]
 
-            # LIST REPLY
+            # LIST SELECTIONS
+
             if message["type"] == "interactive":
 
                 interactive = message["interactive"]
@@ -163,7 +202,8 @@ def webhook():
                     selected_id = interactive["list_reply"]["id"]
                     selected_title = interactive["list_reply"]["title"]
 
-                    # Occasion selected
+                    # OCCASION
+
                     if selected_id in [
                         "birthday",
                         "anniversary",
@@ -178,7 +218,8 @@ def webhook():
 
                         send_budget_list(phone)
 
-                    # Budget selected
+                    # BUDGET
+
                     elif selected_id in [
                         "under1000",
                         "1000_3000",
@@ -187,19 +228,15 @@ def webhook():
                     ]:
 
                         user_data[phone]["budget"] = selected_title
-                        user_data[phone]["details"] = []
-
-                        user_state[phone] = "collecting_details"
+                        user_state[phone] = "waiting_details"
 
                         send_text(
                             phone,
-                            f"""🌸 Please share the following details.
+                            """🌸 Please share the following details:
 
 Quantity -
-Occasion - {user_data[phone]['occasion']}
 Date of requirement -
 Location -
-Budget per hamper - {selected_title}
 
 You may send everything in one message.
 
@@ -208,13 +245,20 @@ OR
 Send multiple messages and type DONE when finished."""
                         )
 
+            # TEXT MESSAGES
+
             elif message["type"] == "text":
 
                 text = message["text"]["body"].strip()
 
                 state = user_state.get(phone)
 
-                if state == "collecting_details":
+                # Collect details
+
+                if state == "waiting_details":
+
+                    if "details" not in user_data[phone]:
+                        user_data[phone]["details"] = []
 
                     if text.upper() == "DONE":
 
@@ -245,6 +289,7 @@ Budget per hamper - {user_data[phone]['budget']}
 
                 else:
 
+                    # Start conversation
                     send_occasion_list(phone)
 
         except Exception as e:
@@ -255,3 +300,4 @@ Budget per hamper - {user_data[phone]['budget']}
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+```
